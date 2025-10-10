@@ -8,7 +8,8 @@ import { AppModule } from '../src/app.module';
 let server: any = null;
 
 async function bootstrapServer() {
-  if (!server) return server;
+  if (server) return server; // return cached handler when already initialized
+
   const expressApp = express();
   const app = await NestFactory.create(
     AppModule,
@@ -16,9 +17,9 @@ async function bootstrapServer() {
   );
   app.enableCors({
     origin: 'http://localhost:3000',
-    Credentials: true,
+    credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowheaders:
+    allowedHeaders:
       'Origin, X-Requested-With, Content-Type, Accept, Authorization',
   });
   await app.init();
