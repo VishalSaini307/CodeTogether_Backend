@@ -1,0 +1,70 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type RoomType {
+  _id: ID!
+  name: String!
+  owner: String!
+  participants: [String!]!
+  code: String
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type UserType {
+  _id: ID!
+  userName: String!
+  name: String!
+  phone: String!
+  email: String!
+  role: String!
+}
+
+type LoginResponse {
+  token: String!
+  user: UserType!
+}
+
+type Query {
+  rooms: [RoomType!]!
+  room(id: String!): RoomType!
+  hello: String!
+}
+
+type Mutation {
+  joinRoomWithCode(roomId: String!, inviteCode: String!): RoomType!
+  createRoom(input: CreateRoomInput!): RoomType!
+  updateRoom(roomId: String!, input: CreateRoomInput!): RoomType!
+  deleteRoom(roomId: String!): String!
+  register(input: RegisterInput!): UserType!
+  login(input: LoginInput!): LoginResponse!
+  runCode(language: String!, code: String!): String!
+}
+
+input CreateRoomInput {
+  name: String!
+  description: String
+  code: String
+}
+
+input RegisterInput {
+  _id: ID
+  userName: String!
+  name: String!
+  phone: String!
+  email: String!
+  password: String!
+  role: String!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}

@@ -1,0 +1,43 @@
+import { Module } from '@nestjs/common';
+import { RoomModule } from './rooms/room.module';
+import { AppController } from './app.controller';
+import { DataBaseModule } from './common/mongo.config';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { join } from 'path';
+import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
+import { CollabModule} from './collab/collab.module';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ConfigModule } from '@nestjs/config';
+import * as jwt from 'jsonwebtoken';
+import { ChatModule } from './chat/chat.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: './src/.env' }),
+    DataBaseModule,
+    GraphQLModule.forRoot<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      context: ({ req }) => {
+        const token = req.headers.authorization?.split(' ')[1]; // Bearer <token>
+        if (token) {
+          try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+            req.user = decoded; // ✅ attach user to req
+          } catch (err) {
+            console.error('Invalid token:', err.message);
+          }
+        }
+        return { req };
+      },
+    }),
+    RoomModule,
+    AuthModule,
+    CollabModule,
+    ChatModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
