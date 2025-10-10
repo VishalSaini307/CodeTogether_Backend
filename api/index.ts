@@ -11,6 +11,14 @@ async function bootstrapServer() {
   if (server) return server; // return cached handler when already initialized
 
   const expressApp = express();
+  // Log express version to make runtime mismatches visible in Vercel logs
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const expressPkg = require('express/package.json');
+    console.log('Express version:', expressPkg.version);
+  } catch (e) {
+    console.warn('Failed to read express version:', e && (e.stack ?? e));
+  }
   const app = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
