@@ -47,6 +47,30 @@ async function bootstrapServer() {
 }
 
 export default async function handler(req: any, res: any) {
+  // Short-circuit simple static requests (favicon, images) so they don't
+  // trigger Nest bootstrapping / auth handlers and clutter logs with 401s.
+  // Browsers often request /favicon.ico or /favicon.png; reply 204 quickly.
+  try {
+    const url = req && (req.url || req.rawUrl || req.originalUrl);
+    if (typeof url === 'string') {
+      const lower = url.split('?')[0].toLowerCase();
+      if (
+        lower === '/favicon.ico' ||
+        lower === '/favicon.png' ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.ico') ||
+        lower.endsWith('.svg')
+      ) {
+        res.statusCode = 204;
+        res.setHeader?.('cache-control', 'public, max-age=86400');
+        res.end();
+        return;
+      }
+    }
+  } catch (e) {
+    // swallow and continue to normal handling if any check throws
+  }
+
   const server = await bootstrapServer();
   return server(req, res);
 }
