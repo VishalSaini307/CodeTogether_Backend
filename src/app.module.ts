@@ -14,7 +14,10 @@ import { ChatModule } from './chat/chat.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: './src/.env' }),
-    DataBaseModule,
+    // Only initialize the DB module when a MONGO_URI is present. In serverless
+    // environments a missing or unreachable DB can cause long cold-starts and
+    // 504s. This keeps functions fast and fails fast if DB is misconfigured.
+    ...(process.env.MONGO_URI ? [DataBaseModule] : []),
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       // ✅ Generate schema in memory (Vercel safe)
