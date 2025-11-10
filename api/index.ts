@@ -11,7 +11,26 @@ async function bootstrapServer() {
   if (cachedServer) return cachedServer;
 
   const expressApp = express();
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
+  // create a Proxy wrapper so reads of `router` do not trigger Express's
+  // deprecated getter which throws when accessed. Mirror approach used in src/main.ts
+  const proxiedExpressApp = new Proxy(function _handler(...args: any[]) {
+    return (expressApp as any).apply?.(expressApp, args);
+  } as any, {
+    get(_target, prop) {
+      if (prop === 'router') return (expressApp as any)._router;
+      const val = (expressApp as any)[prop];
+      return typeof val === 'function' ? val.bind(expressApp) : val;
+    },
+    set(_target, prop, value) {
+      (expressApp as any)[prop] = value;
+      return true;
+    },
+    apply(_target, thisArg, args) {
+      return (expressApp as any).apply?.(thisArg, args);
+    },
+  });
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(proxiedExpressApp));
 
   app.enableCors({
     origin: [
