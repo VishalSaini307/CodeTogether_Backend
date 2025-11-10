@@ -5,7 +5,7 @@ import express from 'express';
 import serverless from 'serverless-http';
 import { AppModule } from '../src/app.module';
 
-let cachedServer: any = null;
+let cachedServer: any;
 
 async function bootstrapServer() {
   if (cachedServer) return cachedServer;
@@ -16,14 +16,13 @@ async function bootstrapServer() {
   app.enableCors({
     origin: [
       'http://localhost:3000',
-      'https://code-together-frontend.vercel.app', // your frontend domain
+      'https://code-together-frontend.vercel.app'
     ],
     credentials: true,
   });
 
   await app.init();
 
-  // ✅ Convert to Vercel-compatible handler
   cachedServer = serverless(expressApp);
   return cachedServer;
 }
