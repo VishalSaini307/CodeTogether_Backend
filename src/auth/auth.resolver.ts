@@ -4,7 +4,7 @@ import { UserType } from './schemas/user.type';
 import { RegisterInput } from './schemas/register.input';
 import { LoginResponse } from './schemas/login.response';
 import { LoginInput } from './schemas/login.input';
-import { ApolloError } from 'apollo-server-express';
+import { GraphQLError } from 'graphql';
 
 @Resolver(() => UserType)
 export class AuthResolver {
@@ -43,10 +43,9 @@ export class AuthResolver {
     } catch (error: any) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       if (error.message && error.message.includes('already exists')) {
-        throw new ApolloError(
-          'User with this email or phone already exists',
-          'DUPLICATE_USER',
-        );
+        throw new GraphQLError('User with this email or phone already exists', {
+          extensions: { code: 'DUPLICATE_USER' },
+        });
       }
       throw error;
     }
@@ -54,15 +53,17 @@ export class AuthResolver {
   @Mutation(() => LoginResponse)
   async login(@Args('input', { type: () => LoginInput }) input: LoginInput) {
     const user = await this.authService.getUserByEmail(input.email);
-    if (!user) throw new ApolloError('User not found', 'USER_NOT_FOUND');
+    if (!user)
+      throw new GraphQLError('User not found', { extensions: { code: 'USER_NOT_FOUND' } });
     const obj: Record<string, any> = user.toObject ? user.toObject() : user;
-    if (!obj) throw new ApolloError('User object is null', 'USER_OBJECT_NULL');
+    if (!obj)
+      throw new GraphQLError('User object is null', { extensions: { code: 'USER_OBJECT_NULL' } });
     const isPasswordValid = await this.authService.validatePassword(
       input.password,
       obj.password,
     );
     if (!isPasswordValid)
-      throw new ApolloError('Invalid password', 'INVALID_PASSWORD');
+      throw new GraphQLError('Invalid password', { extensions: { code: 'INVALID_PASSWORD' } });
   const token = this.authService.generateToken(user);
     return {
       token,
