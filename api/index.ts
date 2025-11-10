@@ -5,81 +5,73 @@ import express from 'express';
 import serverless from 'serverless-http';
 import { AppModule } from '../src/app.module';
 
-let cachedServer: any;
+// Cache the server instance between invocations (critical for Vercel)
+let cachedServer: any = null;
 
 async function bootstrapServer() {
   if (cachedServer) return cachedServer;
 
   const expressApp = express();
-  // create a Proxy wrapper so reads of `router` do not trigger Express's
-  // deprecated getter which throws when accessed. Mirror approach used in src/main.ts
-  const proxiedExpressApp = new Proxy(function _handler(...args: any[]) {
-    return (expressApp as any).apply?.(expressApp, args);
-  } as any, {
-    get(_target, prop) {
-      if (prop === 'router') return (expressApp as any)._router;
-      const val = (expressApp as any)[prop];
-      return typeof val === 'function' ? val.bind(expressApp) : val;
-    },
-    set(_target, prop, value) {
-      (expressApp as any)[prop] = value;
-      return true;
-    },
-    apply(_target, thisArg, args) {
-      return (expressApp as any).apply?.(thisArg, args);
-    },
+  const adapter = new ExpressAdapter(expressApp);
+
+  const app = await NestFactory.create(AppModule, adapter, {
+    logger: ['error', 'warn', 'log'],
   });
 
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(proxiedExpressApp));
-
+  // ✅ CORS for local + frontend
   app.enableCors({
     origin: [
       'http://localhost:5000',
-      'https://code-together-frontend.vercel.app'
+      'https://code-together-frontend.vercel.app',
     ],
     credentials: true,
   });
 
+  // ✅ Ensure full app initialization before serverless wrapping
   await app.init();
 
+  // ✅ Cache server to avoid cold start reboots
   cachedServer = serverless(expressApp);
   return cachedServer;
 }
 
+// ✅ Exported Vercel function entrypoint
 export default async function handler(req: any, res: any) {
-  // Short-circuit simple static requests (favicon, images) so they don't
-  // trigger Nest bootstrapping / auth handlers and clutter logs with 401s.
-  // Browsers often request /favicon.ico or /favicon.png; reply 204 quickly.
   try {
-    const url = req && (req.url || req.rawUrl || req.originalUrl);
-    if (typeof url === 'string') {
-      // Quick health check endpoint: respond immediately without bootstrapping
-      // the whole Nest app. Useful to verify the function is reachable and
-      // to avoid blank screens during cold starts.
-      if (url === '/api/health' || url === '/health' || url === '/ping') {
-        res.statusCode = 200;
-        res.setHeader?.('content-type', 'application/json');
-        res.end(JSON.stringify({ ok: true }));
-        return;
-      }
-      const lower = url.split('?')[0].toLowerCase();
-      if (
-        lower === '/favicon.ico' ||
-        lower === '/favicon.png' ||
-        lower.endsWith('.png') ||
-        lower.endsWith('.ico') ||
-        lower.endsWith('.svg')
-      ) {
-        res.statusCode = 204;
-        res.setHeader?.('cache-control', 'public, max-age=86400');
-        res.end();
-        return;
-      }
-    }
-  } catch (e) {
-    // swallow and continue to normal handling if any check throws
-  }
+    const url = req?.url || req?.rawUrl || req?.originalUrl || '';
 
-  const server = await bootstrapServer();
-  return server(req, res);
+    // Quick health checks (instant response, no Nest boot)
+    if (url === '/api/health' || url === '/health' || url === '/ping') {
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true, timestamp: new Date().toISOString() }));
+      return;
+    }
+
+    // Skip static assets to save cold-start time
+    const lower = url.split('?')[0].toLowerCase();
+    if (
+      lower === '/favicon.ico' ||
+      lower === '/favicon.png' ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.ico') ||
+      lower.endsWith('.svg')
+    ) {
+      res.statusCode = 204;
+      res.setHeader('cache-control', 'public, max-age=86400');
+      res.end();
+      return;
+    }
+
+    // ✅ Initialize (or reuse cached) Nest server
+    const server = await bootstrapServer();
+    return server(req, res);
+
+  } catch (err) {
+    console.error('⚠️ Serverless handler error:', err);
+    res.statusCode = 500;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ message: 'Internal Server Error', error: err.message }));
+  }
 }
+

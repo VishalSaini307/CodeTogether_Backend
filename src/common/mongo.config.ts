@@ -6,15 +6,23 @@ export const DataBaseModule = MongooseModule.forRootAsync({
   useFactory: (configService: ConfigService) => ({
     uri: configService.get<string>('MONGO_URI'),
     dbName: 'Codetogether',
-    // Reduce server selection/connect time so cold-starts fail fast instead of
-    // hanging the serverless function for a long time.
-    // These options are safe defaults for serverless environments.
+
+    // ✅ Fail fast on cold starts instead of hanging
     serverSelectionTimeoutMS: 5000,
     connectTimeoutMS: 5000,
     socketTimeoutMS: 45000,
-    // Use the newer unified topology (default in modern mongoose)
-    // and avoid building indexes on cold starts.
+
+    // ✅ Disable autoIndex to reduce startup cost
     autoIndex: false,
+
+    // ✅ Prevent Mongoose from reconnect loops during serverless re-invocations
+    family: 4, // Force IPv4 (faster resolution on Vercel)
+    maxPoolSize: 3, // Small pool for Lambda
+    minPoolSize: 1,
+
+    // ✅ Optional but recommended
+    retryWrites: true,
+    w: 'majority',
   }),
   inject: [ConfigService],
 });
