@@ -11,7 +11,26 @@ async function bootstrapServer() {
   if (cachedServer) return cachedServer;
 
   const expressApp = express();
-  const adapter = new ExpressAdapter(expressApp);
+  // create a Proxy wrapper so reads of `router` do not trigger Express's
+  // deprecated getter which emits the "'app.router' is deprecated" warning.
+  const proxiedExpressApp = new Proxy(function _handler(...args: any[]) {
+    return (expressApp as any).apply?.(expressApp, args);
+  } as any, {
+    get(_target, prop) {
+      if (prop === 'router') return (expressApp as any)._router;
+      const val = (expressApp as any)[prop];
+      return typeof val === 'function' ? val.bind(expressApp) : val;
+    },
+    set(_target, prop, value) {
+      (expressApp as any)[prop] = value;
+      return true;
+    },
+    apply(_target, thisArg, args) {
+      return (expressApp as any).apply?.(thisArg, args);
+    },
+  });
+
+  const adapter = new ExpressAdapter(proxiedExpressApp);
 
   const app = await NestFactory.create(AppModule, adapter, {
     logger: ['error', 'warn', 'log'],
@@ -27,7 +46,10 @@ async function bootstrapServer() {
 
   await app.init();
 
-  cachedServer = serverless(expressApp);
+  // Use the proxied app for the serverless handler as well so accesses
+  // to `router` won't trigger Express's deprecated getter when running
+  // in serverless environments.
+  cachedServer = serverless(proxiedExpressApp as any);
   return cachedServer;
 }
 
