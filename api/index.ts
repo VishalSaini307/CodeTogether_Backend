@@ -1,9 +1,9 @@
 import 'source-map-support/register';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
+import { AppModule } from '../src/app.module';
 import express from 'express';
 import serverless from 'serverless-http';
-import { AppModule } from '../src/app.module';
 
 let cachedServer: any = null;
 
@@ -11,26 +11,7 @@ async function bootstrapServer() {
   if (cachedServer) return cachedServer;
 
   const expressApp = express();
-  // create a Proxy wrapper so reads of `router` do not trigger Express's
-  // deprecated getter which emits the "'app.router' is deprecated" warning.
-  const proxiedExpressApp = new Proxy(function _handler(...args: any[]) {
-    return (expressApp as any).apply?.(expressApp, args);
-  } as any, {
-    get(_target, prop) {
-      if (prop === 'router') return (expressApp as any)._router;
-      const val = (expressApp as any)[prop];
-      return typeof val === 'function' ? val.bind(expressApp) : val;
-    },
-    set(_target, prop, value) {
-      (expressApp as any)[prop] = value;
-      return true;
-    },
-    apply(_target, thisArg, args) {
-      return (expressApp as any).apply?.(thisArg, args);
-    },
-  });
-
-  const adapter = new ExpressAdapter(proxiedExpressApp);
+  const adapter = new ExpressAdapter(expressApp);
 
   const app = await NestFactory.create(AppModule, adapter, {
     logger: ['error', 'warn', 'log'],
@@ -46,18 +27,16 @@ async function bootstrapServer() {
 
   await app.init();
 
-  // Use the proxied app for the serverless handler as well so accesses
-  // to `router` won't trigger Express's deprecated getter when running
-  // in serverless environments.
-  cachedServer = serverless(proxiedExpressApp as any);
+  // ✅ Cache server to reuse on next invocations (critical for Vercel)
+  cachedServer = serverless(expressApp);
   return cachedServer;
 }
 
 export default async function handler(req: any, res: any) {
   try {
-    const url = req?.url || req?.rawUrl || req?.originalUrl || '';
+    const url = req?.url || '';
 
-    // Quick health checks (no Nest boot)
+    // ✅ Quick health check (instant response)
     if (url === '/api/health' || url === '/health' || url === '/ping') {
       res.statusCode = 200;
       res.setHeader('content-type', 'application/json');
@@ -65,7 +44,7 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // Ignore favicon/static asset requests
+    // ✅ Skip favicon/static files to reduce cold start
     const lower = url.split('?')[0].toLowerCase();
     if (
       lower.endsWith('.ico') ||
@@ -80,6 +59,7 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    // ✅ Initialize or reuse cached Nest server
     const server = await bootstrapServer();
     return server(req, res);
   } catch (err) {
