@@ -34,7 +34,7 @@ async function bootstrapServer() {
 
   app.enableCors({
     origin: [
-      'http://localhost:3000',
+      'http://localhost:5000',
       'https://code-together-frontend.vercel.app'
     ],
     credentials: true,
@@ -53,6 +53,15 @@ export default async function handler(req: any, res: any) {
   try {
     const url = req && (req.url || req.rawUrl || req.originalUrl);
     if (typeof url === 'string') {
+      // Quick health check endpoint: respond immediately without bootstrapping
+      // the whole Nest app. Useful to verify the function is reachable and
+      // to avoid blank screens during cold starts.
+      if (url === '/api/health' || url === '/health' || url === '/ping') {
+        res.statusCode = 200;
+        res.setHeader?.('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
       const lower = url.split('?')[0].toLowerCase();
       if (
         lower === '/favicon.ico' ||
