@@ -6,8 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-  "build": "nest build",
-  "vercel-build": "npm run build:ts && nest build && node ./scripts/copy-dist-api.js",
+    "build": "nest build",
+    "vercel-build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/src/main.js",
