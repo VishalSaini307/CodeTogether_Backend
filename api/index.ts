@@ -1,59 +1,54 @@
-// api/index.ts
-
-import 'source-map-support/register';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import serverless from 'serverless-http';
 import { AppModule } from '../src/app.module';
 
-let cachedNestApp: any = null;
-let cachedServerHandler: any = null;
+const expressApp = express();
+let cachedServer: any = null;
 
-/**
- * Fix for MongoDB + NestJS cold-start
- * Ensures the event loop does not wait for open handles
- */
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-async function bootstrapNest() {
-  if (cachedServerHandler) {
-    return cachedServerHandler;
+async function bootstrapServer() {
+  if (cachedServer) {
+    return cachedServer;
   }
 
-  const expressApp = express();
-  const adapter = new ExpressAdapter(expressApp);
-
-  const app = await NestFactory.create(AppModule, adapter, {
-    logger: ['error', 'warn'],
-  });
-
-  // Allow Vercel cold starts
-  (app as any).getHttpAdapter().getInstance().set('callbackWaitsForEmptyEventLoop', false);
+  const app = await NestFactory.create(
+    AppModule,
+    new ExpressAdapter(expressApp),
+    {
+      logger: ['error', 'warn', 'log'],
+    }
+  );
 
   app.enableCors({
     origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
   });
 
   await app.init();
 
-  cachedNestApp = app;
-  cachedServerHandler = serverless(expressApp);
-
-  return cachedServerHandler;
+  cachedServer = serverless(expressApp);
+  return cachedServer;
 }
 
-export default async function handler(req, res) {
+export default async function handler(req: any, res: any) {
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(200).end();
+  }
+
   try {
-    const server = await bootstrapNest();
+    const server = await bootstrapServer();
     return server(req, res);
-  } catch (err) {
-    console.error('❌ Handler Error:', err);
-    res.statusCode = 500;
-    res.end(JSON.stringify({ error: err.message }));
+  } catch (error) {
+    console.error('Server error:', error);
+    return res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message,
+    });
   }
 }
